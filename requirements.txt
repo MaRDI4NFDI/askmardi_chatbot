@@ -1,0 +1,19 @@
+# Core Web App
+streamlit>=1.41.1
+
+# LangChain stack
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+sentence-transformers>=2.7.0
+langchain-huggingface
+
+# Qdrant VectorDB
+qdrant-client>=1.12.0
+
+# OpenAI-compatible clients
+openai>=1.54.3
+
+# Configuration + env management
+pyyaml>=6.0.2
+python-dotenv>=1.0.1

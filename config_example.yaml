@@ -1,0 +1,11 @@
+qdrant:
+  url: "http://localhost:6333"     # Adjust if remote instance
+  collection: "software_docs"      # Must exist and contain your uploaded docs
+
+llm:
+  host: "https://ollama.zib.de/api"
+  model_name: "deepseek-r1:70b"
+  api_key: "MY_KEY"
+
+embedding:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"

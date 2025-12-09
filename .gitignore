@@ -1,0 +1,6 @@
+.venv
+.idea
+/config.yaml
+/AGENTS.md
+__pycache__/
+*.pyc
