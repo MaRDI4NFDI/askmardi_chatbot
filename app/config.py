@@ -1,5 +1,7 @@
 import os
 import yaml
+from openai import OpenAI
+from qdrant_client import QdrantClient
 from app.logger import get_logger
 
 logger = get_logger("config")
@@ -22,5 +24,44 @@ def load_config():
         cfg["llm"]["api_key"] = os.environ["LLM_API_KEY"]
         logger.info("LLM_API_KEY overridden via environment")
 
+    # Allow qdrant url to be overridden via env
+    if "QDRANT_URL" in os.environ:
+        cfg["qdrant"]["url"] = os.environ["QDRANT_URL"]
+        logger.info("QDRANT_URL overridden via environment")
+
     logger.info("Config loaded (llm.model_name=%s, qdrant.url=%s)", cfg["llm"]["model_name"], cfg["qdrant"]["url"])
     return cfg
+
+
+def check_config():
+    """Validate config by loading it and checking Qdrant and LLM reachability.
+
+    Returns:
+        bool: True if both checks succeed, False otherwise.
+    """
+    cfg = load_config()
+    ok = True
+
+    try:
+        client = QdrantClient(
+            url=cfg["qdrant"]["url"],
+            api_key=cfg["qdrant"].get("api_key"),
+        )
+        client.get_collections()
+        logger.info("Qdrant connectivity check succeeded")
+    except Exception as exc:
+        ok = False
+        logger.warning("Qdrant connectivity check failed: %s", exc)
+
+    try:
+        llm_client = OpenAI(
+            base_url=cfg["llm"]["host"],
+            api_key=cfg["llm"].get("api_key"),
+        )
+        llm_client.models.list()
+        logger.info("LLM connectivity check succeeded")
+    except Exception as exc:
+        ok = False
+        logger.warning("LLM connectivity check failed: %s", exc)
+
+    return ok

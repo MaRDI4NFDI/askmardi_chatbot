@@ -7,6 +7,7 @@ import streamlit as st
 from app.rag_chain import build_rag_chain
 from app.prompts import build_prompt
 from app.logger import get_logger
+from app.config import check_config
 
 
 HISTORY_LENGTH = 5
@@ -46,6 +47,7 @@ def init_state():
 
 init_state()
 logger = get_logger("ui")
+config_ok = check_config()
 
 
 def apply_layout_styles():
@@ -171,6 +173,10 @@ with title_col:
     render_hero()
 with action_col:
     st.button("Restart", on_click=reset_session, type="secondary")
+
+if not config_ok:
+    st.error("Config checks failed. Qdrant or LLM not reachable.")
+    st.stop()
 
 # --- Render existing chat history ---
 for msg in st.session_state.messages:
