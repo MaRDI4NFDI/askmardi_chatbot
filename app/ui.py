@@ -223,7 +223,14 @@ if is_new_prompt:
     # Retrieve docs first (so streaming includes them)
     with st.spinner("Retrieving context… 🔍"):
         t_retrieve = time.time()
-        rec = chain.invoke({"question": user_message})
+
+        try:
+            rec = chain.invoke({"question": user_message})
+        except Exception as e:
+            logger.exception("Could not connect to qdrant server: %s", e)
+            st.error("Could not connect to qdrant server:: %s" % e)
+            st.stop()
+
         logger.info("Retrieval+formatting completed in %.2fs", time.time() - t_retrieve)
         docs = rec["docs"]
         context = rec["context"]
@@ -236,18 +243,147 @@ if is_new_prompt:
         history=history,
     )
 
+    logger.info("LLM Query: %s", prompt_str[:1000])
+
     # === Streaming answer ===
     streamed_text = ""
+    chunk_count = 0
+    empty_chunk_count = 0
+    first_chunks = []
+    last_chunk = None
+    last_chunk_dump = None
+    last_usage = None
+    finish_reason = None
+    t_stream = time.time()
     with st.chat_message("assistant"):
         answer_placeholder = st.empty()
-        with st.spinner("Thinking… 🤖"):
-            for chunk in llm.stream(prompt_str):
-                streamed_text += chunk.content
-                answer_placeholder.markdown(streamed_text + "▌")
+        with st.spinner("Thinking ..."):
+            try:
+                for chunk in llm.stream(prompt_str):
+                    last_chunk = chunk
+                    try:
+                        last_chunk_dump = chunk.model_dump(exclude_none=True)
+                    except Exception:
+                        last_chunk_dump = None
+                    if getattr(chunk, "usage_metadata", None):
+                        last_usage = chunk.usage_metadata
+                    chunk_count += 1
+                    content = chunk.content or ""
+                    if not finish_reason:
+                        finish_reason = getattr(
+                            chunk, "response_metadata", {}
+                        ).get("finish_reason")
+                    if chunk_count == 1:
+                        logger.info(
+                            "First chunk meta=%s extra=%s raw=%r",
+                            getattr(chunk, "response_metadata", None),
+                            getattr(chunk, "additional_kwargs", None),
+                            chunk,
+                        )
+                        logger.info(
+                            "Received first LLM chunk (%s chars)", len(content)
+                        )
+                    if not content:
+                        empty_chunk_count += 1
+                        if len(first_chunks) < 5:
+                            first_chunks.append(
+                                {
+                                    "n": chunk_count,
+                                    "len": len(content),
+                                    "meta": getattr(
+                                        chunk, "response_metadata", None
+                                    ),
+                                    "extra": getattr(
+                                        chunk, "additional_kwargs", None
+                                    ),
+                                    "raw": repr(chunk),
+                                    "dump": last_chunk_dump,
+                                }
+                            )
+                        if empty_chunk_count <= 3:
+                            logger.info(
+                                "Empty chunk #%d meta=%s extra=%s raw=%r",
+                                empty_chunk_count,
+                                getattr(chunk, "response_metadata", None),
+                                getattr(chunk, "additional_kwargs", None),
+                                chunk,
+                            )
+                        if (
+                            getattr(chunk, "usage_metadata", None)
+                            and chunk.usage_metadata.get("output_tokens")
+                        ):
+                            logger.info(
+                                "Empty chunk carried usage: %s",
+                                chunk.usage_metadata,
+                            )
+                    streamed_text += content
+                    answer_placeholder.markdown(streamed_text + "▌")
+            except Exception:
+                logger.exception(
+                    "LLM streaming failed after %d chunks (%.2fs)",
+                    chunk_count,
+                    time.time() - t_stream,
+                )
+                raise
         answer_placeholder.markdown(streamed_text)
+    stream_duration = time.time() - t_stream
+    if not streamed_text:
+        logger.warning(
+            "LLM stream yielded no content (chunks=%d, %.2fs)",
+            chunk_count,
+            stream_duration,
+        )
+        if last_usage:
+            logger.warning("LLM usage (last seen): %s", last_usage)
+        if finish_reason:
+            logger.warning("LLM finish_reason: %s", finish_reason)
+        if first_chunks:
+            logger.warning(
+                "First chunks detail (up to 5): %s",
+                first_chunks,
+            )
+        if last_chunk:
+            logger.warning(
+                "Last chunk meta=%s extra=%s raw=%r dump=%s",
+                getattr(last_chunk, "response_metadata", None),
+                getattr(last_chunk, "additional_kwargs", None),
+                last_chunk,
+                last_chunk_dump,
+            )
+    else:
+        logger.info(
+            "LLM stream completed in %.2fs (chunks=%d, chars=%d)",
+            stream_duration,
+            chunk_count,
+            len(streamed_text),
+        )
+        if empty_chunk_count:
+            logger.info(
+                "LLM stream had %d empty chunks out of %d",
+                empty_chunk_count,
+                chunk_count,
+            )
+        if last_usage:
+            logger.info("LLM usage (last seen): %s", last_usage)
+        if finish_reason:
+            logger.info("LLM finish_reason: %s", finish_reason)
+        if first_chunks:
+            logger.info(
+                "First chunks detail (up to 5): %s",
+                first_chunks,
+            )
+        if last_chunk:
+            logger.info(
+                "Last chunk meta=%s extra=%s raw=%r dump=%s",
+                getattr(last_chunk, "response_metadata", None),
+                getattr(last_chunk, "additional_kwargs", None),
+                last_chunk,
+                last_chunk_dump,
+            )
 
     # Add final answer to chat state
     st.session_state.messages.append({"role": "assistant", "content": streamed_text})
+    logger.info("LLM Answer: %s", streamed_text[:80])
 
 # --- Sources Used ---
 if st.session_state.docs:
