@@ -148,7 +148,7 @@ def render_hero():
     """
     logo_path = Path(__file__).resolve().parent.parent / "assets" / "logo.png"
     if logo_path.exists():
-        st.image(str(logo_path), width=103)
+        st.image(str(logo_path), width=150)
     else:
         st.markdown("### ❉")
 
@@ -158,11 +158,11 @@ def render_hero():
     )
     with title_row:
         st.title(
-            "ASK::MARDI Chat Bot",
+            "Your AI for the MaRDI KG",
             anchor=False,
             width="stretch",
         )
-    st.caption("Ask about the indexed content. Answers are grounded in Qdrant context.")
+    st.caption("You can ask about the currently indexed content from the MaRDI knowledge graph.")
 
 
 st.set_page_config(page_title="ASK::MARDI Chatbot", layout="centered")
