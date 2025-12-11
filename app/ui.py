@@ -285,7 +285,7 @@ if is_new_prompt:
         history=history,
     )
 
-    logger.info("LLM Query: %s", prompt_str[:1000])
+    logger.info("LLM Query: %s", prompt_str[:300])
 
     # === Streaming answer ===
     streamed_text = ""

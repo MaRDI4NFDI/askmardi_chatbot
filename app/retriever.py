@@ -2,13 +2,14 @@ from typing import List
 from langchain_core.documents import Document
 
 
-def create_retriever(client, embeddings, collection: str):
+def create_retriever(client, embeddings, collection: str, limit: int = 5):
     """Create a retriever callable that queries Qdrant with embeddings.
 
     Args:
         client: Qdrant client instance.
         embeddings: Embedding model exposing embed_query.
         collection: Target Qdrant collection name.
+        limit: Maximum number of documents to retrieve from Qdrant.
 
     Returns:
         Callable[[str], List[Document]]: Function that performs similarity search.
@@ -27,7 +28,7 @@ def create_retriever(client, embeddings, collection: str):
             collection_name=collection,
             with_vectors=True,
             query=query_embedding,
-            limit=5,
+            limit=limit,
         )
         docs = [
             Document(
@@ -41,13 +42,14 @@ def create_retriever(client, embeddings, collection: str):
     return custom_retrieve
 
 
-def format_docs(docs: List[Document]) -> str:
+def format_docs(docs: List[Document], context_limit: int) -> str:
     """Join the top documents into a context string for the LLM.
 
     Args:
         docs: Documents returned from the retriever.
+        context_limit: Max number of docs to include in the context.
 
     Returns:
         str: Concatenated page contents from the first few documents.
     """
-    return "\n\n".join(doc.page_content for doc in docs[:3])
+    return "\n\n".join(doc.page_content for doc in docs[:context_limit])

@@ -1,6 +1,8 @@
 qdrant:
-  url: "http://localhost:6333"     # Adjust if remote instance
-  collection: "software_docs"      # Must exist and contain your uploaded docs
+  url: "http://localhost:6333"
+  collection: "software_docs"
+  limit: 5                         # Number of documents to retrieve per query
+  context_limit: 3                 # Number of documents to send to the LLM context
 
 ollama:
   host: "https://ollama.zib.de/api"

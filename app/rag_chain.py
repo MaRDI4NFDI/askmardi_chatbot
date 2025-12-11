@@ -14,13 +14,15 @@ logger = get_logger("rag_chain")
 
 
 @st.cache_resource
-def build_cached_chain(qdrant_url, qdrant_api_key, collection, embed_model, llm_host, llm_model, ollama_api_key):
+def build_cached_chain(qdrant_url, qdrant_api_key, collection, retrieve_limit, context_limit, embed_model, llm_host, llm_model, ollama_api_key):
     """Build and cache the retrieval chain and LLM client to avoid per-prompt rebuilds.
 
     Args:
         qdrant_url: Qdrant endpoint URL.
         qdrant_api_key: Optional Qdrant API key.
         collection: Target collection name.
+        retrieve_limit: Max number of documents to pull from Qdrant.
+        context_limit: Max number of docs to include in the LLM context.
         embed_model: Embedding model name.
         llm_host: OpenAI-compatible host URL.
         llm_model: LLM model name.
@@ -46,6 +48,7 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, embed_model, llm_
         client=client,
         embeddings=embeddings,
         collection=collection,
+        limit=retrieve_limit,
     )
 
     def timed_retriever(query):
@@ -85,7 +88,7 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, embed_model, llm_
         docs = x["docs"]
         return {
             "docs": docs,
-            "context": format_docs(docs),
+            "context": format_docs(docs, context_limit),
         }
 
     chain = (
@@ -114,6 +117,8 @@ def build_rag_chain():
         qdrant_url=cfg["qdrant"]["url"],
         qdrant_api_key=cfg["qdrant"].get("api_key"),
         collection=cfg["qdrant"]["collection"],
+        retrieve_limit=cfg["qdrant"].get("limit", 5),
+        context_limit=cfg["qdrant"].get("context_limit", 3),
         embed_model=cfg["embedding"]["model_name"],
         llm_host=cfg["ollama"]["host"],
         llm_model=cfg["ollama"]["model_name"],
