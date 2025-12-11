@@ -12,6 +12,10 @@ from app.config import check_config
 
 HISTORY_LENGTH = 5
 MIN_TIME_BETWEEN_REQUESTS = timedelta(seconds=3)
+EMPTY_ANSWER_FALLBACK = (
+    "Sorry, I couldn't generate a response this time. Please try again or "
+    "rephrase your question."
+)
 SUGGESTIONS = {
     "🔔 Timetables": (
         "What information is available about packages that are concerned with timetables?"
@@ -80,6 +84,12 @@ def apply_layout_styles():
             margin-right: auto;
             padding-top: 2rem;
             padding-bottom: 2rem;
+        }
+        div[data-testid="stChatInput"] {
+            border: 2px solid #f5a623;
+            border-radius: 14px;
+            padding: 0.35rem 0.85rem;
+            box-shadow: 0 6px 20px rgba(245, 166, 35, 0.25);
         }
         </style>
         """,
@@ -382,6 +392,8 @@ if is_new_prompt:
                 last_chunk,
                 last_chunk_dump,
             )
+        streamed_text = EMPTY_ANSWER_FALLBACK
+        answer_placeholder.markdown(streamed_text)
     else:
         logger.info(
             "LLM stream completed in %.2fs (chunks=%d, chars=%d)",
