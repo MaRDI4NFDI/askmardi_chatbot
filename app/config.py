@@ -20,16 +20,16 @@ def load_config():
         cfg = yaml.safe_load(f)
 
     # Allow API keys to be overridden via env
-    if "LLM_API_KEY" in os.environ:
-        cfg["llm"]["api_key"] = os.environ["LLM_API_KEY"]
-        logger.info("LLM_API_KEY overridden via environment")
+    if "OLLAMA_API_KEY" in os.environ:
+        cfg["ollama"]["api_key"] = os.environ["OLLAMA_API_KEY"]
+        logger.info("OLLAMA_API_KEY overridden via environment")
 
     # Allow qdrant url to be overridden via env
     if "QDRANT_URL" in os.environ:
         cfg["qdrant"]["url"] = os.environ["QDRANT_URL"]
         logger.info("QDRANT_URL overridden via environment")
 
-    logger.info("Config loaded (llm.model_name=%s, qdrant.url=%s)", cfg["llm"]["model_name"], cfg["qdrant"]["url"])
+    logger.info("Config loaded (ollama.model_name=%s, qdrant.url=%s)", cfg["ollama"]["model_name"], cfg["qdrant"]["url"])
     return cfg
 
 
@@ -55,8 +55,8 @@ def check_config():
 
     try:
         llm_client = OpenAI(
-            base_url=cfg["llm"]["host"],
-            api_key=cfg["llm"].get("api_key"),
+            base_url=cfg["ollama"]["host"],
+            api_key=cfg["ollama"].get("api_key"),
         )
         llm_client.models.list()
         logger.info("LLM connectivity check succeeded")

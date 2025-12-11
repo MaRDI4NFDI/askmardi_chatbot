@@ -14,7 +14,7 @@ logger = get_logger("rag_chain")
 
 
 @st.cache_resource
-def build_cached_chain(qdrant_url, qdrant_api_key, collection, embed_model, llm_host, llm_model, llm_api_key):
+def build_cached_chain(qdrant_url, qdrant_api_key, collection, embed_model, llm_host, llm_model, ollama_api_key):
     """Build and cache the retrieval chain and LLM client to avoid per-prompt rebuilds.
 
     Args:
@@ -24,7 +24,7 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, embed_model, llm_
         embed_model: Embedding model name.
         llm_host: OpenAI-compatible host URL.
         llm_model: LLM model name.
-        llm_api_key: Optional LLM API key.
+        ollama_api_key: Optional LLM API key.
 
     Returns:
         Tuple[Runnable, ChatOpenAI]: Chain plus LLM client for streaming.
@@ -66,7 +66,7 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, embed_model, llm_
 
     llm = ChatOpenAI(
         base_url=llm_host,
-        api_key=llm_api_key,
+        api_key=ollama_api_key,
         model_name=llm_model,
         temperature=0,
         streaming=True,
@@ -115,9 +115,9 @@ def build_rag_chain():
         qdrant_api_key=cfg["qdrant"].get("api_key"),
         collection=cfg["qdrant"]["collection"],
         embed_model=cfg["embedding"]["model_name"],
-        llm_host=cfg["llm"]["host"],
-        llm_model=cfg["llm"]["model_name"],
-        llm_api_key=cfg["llm"].get("api_key"),
+        llm_host=cfg["ollama"]["host"],
+        llm_model=cfg["ollama"]["model_name"],
+        ollama_api_key=cfg["ollama"].get("api_key"),
     )
 
     return chain, llm

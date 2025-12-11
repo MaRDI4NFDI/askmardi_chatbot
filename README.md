@@ -18,7 +18,7 @@ docker build -f docker/Dockerfile -t askmardi-chatbot:dev .
 ```
 docker run --rm \
   -p 8501:8501 \
-  -e LLM_API_KEY=API_KEY \
+  -e OLLAMA_API_KEY=API_KEY \
   -e QDRANT_URL=http://your-qdrant.com:6333 \
   askmardi-chatbot:dev
 ```
