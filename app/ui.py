@@ -75,7 +75,7 @@ def apply_layout_styles():
         """
         <style>
         .main .block-container {
-            max-width: 900px;
+            max-width: 1100px;
             margin-left: auto;
             margin-right: auto;
             padding-top: 2rem;
@@ -195,15 +195,12 @@ def render_disclaimer():
 st.set_page_config(page_title="ASK::MARDI Chatbot", layout="centered")
 apply_layout_styles()
 
-title_col, action_col = st.columns([5, 3])
+title_col, action_col = st.columns([9, 2])
 with title_col:
     render_hero()
 with action_col:
-    restart_col, disclaimer_col = st.columns([1, 1.6])
-    with restart_col:
-        st.button("Restart", on_click=reset_session, type="secondary", use_container_width=True)
-    with disclaimer_col:
-        render_disclaimer()
+    st.button("Restart", on_click=reset_session, type="secondary", use_container_width=True)
+    render_disclaimer()
 
 if not config_ok:
     st.error("Config checks failed. Qdrant or LLM not reachable.")
