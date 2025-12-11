@@ -24,6 +24,21 @@ SUGGESTIONS = {
     ),
 }
 
+DISCLAIMER_TEXT = """This AI chatbot is powered by the MaRDI Knowledge Graph.
+Keep in mind that this is a very early prototype and only a fraction of the 
+knowledge graph has actually been indexed yet.
+Answers may be inaccurate, inefficient, or biased. Any use or decisions
+based on such answers should include reasonable practices including human
+oversight to ensure they are safe, accurate, and suitable for your intended
+purpose. The MaRDI consortium is not liable for any actions, losses, or damages
+resulting from the use of the chatbot. Do not enter any private, sensitive,
+personal, or regulated data. By using this chatbot, you acknowledge and agree
+that input you provide and answers you receive (collectively, "Content") may
+be used by MaRDI to provide, maintain, develop, and improve their
+respective offerings. For more information on how MaRDI may use your
+content, see https://www.mardi4nfdi.de .
+"""
+
 
 # --- Session state ---
 def init_state():
@@ -165,14 +180,30 @@ def render_hero():
     st.caption("You can ask about the currently indexed content from the MaRDI knowledge graph.")
 
 
+@st.dialog("Legal Disclaimer")
+def show_disclaimer_dialog():
+    """Render the modal containing the legal disclaimer text."""
+    st.markdown(DISCLAIMER_TEXT)
+
+
+def render_disclaimer():
+    """Render a clickable control that opens the legal disclaimer modal."""
+    if st.button("Disclaimer", type="secondary", use_container_width=True):
+        show_disclaimer_dialog()
+
+
 st.set_page_config(page_title="ASK::MARDI Chatbot", layout="centered")
 apply_layout_styles()
 
-title_col, action_col = st.columns([6, 1])
+title_col, action_col = st.columns([5, 3])
 with title_col:
     render_hero()
 with action_col:
-    st.button("Restart", on_click=reset_session, type="secondary")
+    restart_col, disclaimer_col = st.columns([1, 1.6])
+    with restart_col:
+        st.button("Restart", on_click=reset_session, type="secondary", use_container_width=True)
+    with disclaimer_col:
+        render_disclaimer()
 
 if not config_ok:
     st.error("Config checks failed. Qdrant or LLM not reachable.")
@@ -192,11 +223,9 @@ user_input = st.chat_input(
 # Suggestions: inline for first question, expander for follow-ups
 if not st.session_state.messages:
     render_suggestions()
-    st.caption("⚖️ Legal disclaimer")
 else:
     with st.expander("Need inspiration?", expanded=False):
         render_suggestions()
-    st.caption("⚖️ Legal disclaimer")
 
 user_message = st.session_state.pop("queued_message", None) or user_input
 
