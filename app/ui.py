@@ -1,4 +1,3 @@
-import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,7 +7,13 @@ import streamlit as st
 from app.rag_chain import build_rag_chain
 from app.prompts import build_prompt
 from app.logger import get_logger
-from app.config import check_config, load_config
+from app.config import check_config
+from app.helper import (
+    estimate_token_count,
+    format_duration,
+    inspect_usage_line,
+    ns_to_seconds,
+)
 
 HISTORY_LENGTH = 5
 MIN_TIME_BETWEEN_REQUESTS = timedelta(seconds=3)
@@ -69,82 +74,6 @@ def init_state():
 init_state()
 logger = get_logger("ui")
 config_ok = check_config()
-
-
-def inspect_usage_line(log_line):
-    """Extract token counts from a usage log line and warn if input crosses threshold.
-
-    Args:
-        log_line: Raw log line containing token usage details.
-
-    Returns:
-        tuple | None: Parsed (input_tokens, output_tokens, total_tokens) if found, else None.
-    """
-    cfg = load_config()
-    threshold = cfg["ollama"].get("max_context_size")
-
-    match = re.search(
-        r"input_tokens':\s*(\d+).*output_tokens':\s*(\d+).*total_tokens':\s*(\d+)",
-        log_line,
-    )
-    if not match:
-        return None
-    input_tokens, output_tokens, total_tokens = map(int, match.groups())
-    if input_tokens >= threshold:
-        logger.warning(
-            "LLM input tokens (%d) exceeded threshold (%d)",
-            input_tokens,
-            threshold,
-        )
-    else:
-        logger.debug(
-            "LLM input tokens (%d) within threshold (%d)",
-            input_tokens,
-            threshold,
-        )
-    return input_tokens, output_tokens, total_tokens
-
-
-def estimate_token_count(text: str) -> int:
-    """Return a quick token estimate using a mixed heuristic.
-
-    Args:
-        text: Input string to approximate token count for.
-
-    Returns:
-        int: Approximate token count.
-    """
-    # Heuristic: count word/punctuation chunks and also scale by 4 chars per token,
-    # then take the max to avoid undercounting.
-    rough_bpe = max(1, len(text) // 4)
-    wordish = len(re.findall(r"\w+|[^\w\s]", text))
-    return max(rough_bpe, wordish)
-
-
-def _ns_to_seconds(ns_value):
-    """Convert nanoseconds to seconds if present.
-
-    Args:
-        ns_value: Duration in nanoseconds or None.
-
-    Returns:
-        float | None: Duration in seconds if convertible, else None.
-    """
-    return ns_value / 1_000_000_000 if ns_value is not None else None
-
-
-def _format_duration(seconds):
-    """Format a duration in seconds for logging.
-
-    Args:
-        seconds: Duration in seconds or None.
-
-    Returns:
-        str: Formatted string like ``0.12s`` or ``n/a`` if missing.
-    """
-    return f"{seconds:.2f}s" if seconds is not None else "n/a"
-
-
 def apply_layout_styles():
     """Constrain page width and add comfortable padding.
 
@@ -530,10 +459,10 @@ if is_new_prompt:
     total_duration = time.time() - request_start
     source_meta_chunk = meta_chunk or last_chunk
     meta = getattr(source_meta_chunk, "response_metadata", {}) if source_meta_chunk else {}
-    meta_total = _ns_to_seconds(meta.get("total_duration"))
-    meta_load = _ns_to_seconds(meta.get("load_duration"))
-    meta_prompt_eval = _ns_to_seconds(meta.get("prompt_eval_duration"))
-    meta_eval = _ns_to_seconds(meta.get("eval_duration"))
+    meta_total = ns_to_seconds(meta.get("total_duration"))
+    meta_load = ns_to_seconds(meta.get("load_duration"))
+    meta_prompt_eval = ns_to_seconds(meta.get("prompt_eval_duration"))
+    meta_eval = ns_to_seconds(meta.get("eval_duration"))
     logger.info(
         (
             "LLM Answer: %s "
@@ -541,10 +470,10 @@ if is_new_prompt:
             "retrieve=%.2fs, chain_build=%.2fs, total=%.2fs)"
         ),
         streamed_text[:80],
-        _format_duration(meta_total),
-        _format_duration(meta_load),
-        _format_duration(meta_prompt_eval),
-        _format_duration(meta_eval),
+        format_duration(meta_total),
+        format_duration(meta_load),
+        format_duration(meta_prompt_eval),
+        format_duration(meta_eval),
         retrieval_duration,
         chain_build_duration,
         total_duration,
