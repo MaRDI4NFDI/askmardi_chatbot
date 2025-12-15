@@ -17,14 +17,16 @@ EMPTY_ANSWER_FALLBACK = (
     "rephrase your question."
 )
 SUGGESTIONS = {
-    "🔔 Timetables": (
-        "What information is available about packages that are concerned with timetables?"
+    "🔔 Regularization in glmnet": (
+        "How does the glmnet package implement regularization for linear and logistic regression?"
     ),
-    "🌦️ Weather analysis": (
-        "Which packages are available that deal with weather analysis?"
+    "🌦️ Network analysis": (
+        "Show available packages for graph and network analysis and how measures such as centrality " +
+        "or connectivity are defined."
     ),
     "🧮 Math packages": (
-        "Which packages are available that have something to do with mathematics?"
+        "How are time-series models mathematically represented, and "+
+        "which criteria are used to compare or select competing models according to the package documentation?"
     ),
 }
 
