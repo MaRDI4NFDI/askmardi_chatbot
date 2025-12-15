@@ -24,7 +24,7 @@ SUGGESTIONS = {
         "Show available packages for graph and network analysis and how measures such as centrality " +
         "or connectivity are defined."
     ),
-    "🧮 Math packages": (
+    "🧮 Time-series models": (
         "How are time-series models mathematically represented, and "+
         "which criteria are used to compare or select competing models according to the package documentation?"
     ),
