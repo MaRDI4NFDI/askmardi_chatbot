@@ -8,8 +8,7 @@ import streamlit as st
 from app.rag_chain import build_rag_chain
 from app.prompts import build_prompt
 from app.logger import get_logger
-from app.config import check_config
-
+from app.config import check_config, load_config
 
 HISTORY_LENGTH = 5
 MIN_TIME_BETWEEN_REQUESTS = timedelta(seconds=3)
@@ -72,16 +71,18 @@ logger = get_logger("ui")
 config_ok = check_config()
 
 
-def inspect_usage_line(log_line, threshold=2048):
+def inspect_usage_line(log_line):
     """Extract token counts from a usage log line and warn if input crosses threshold.
 
     Args:
         log_line: Raw log line containing token usage details.
-        threshold: Input token threshold for issuing a warning.
 
     Returns:
         tuple | None: Parsed (input_tokens, output_tokens, total_tokens) if found, else None.
     """
+    cfg = load_config()
+    threshold = cfg["ollama"].get("max_context_size")
+
     match = re.search(
         r"input_tokens':\s*(\d+).*output_tokens':\s*(\d+).*total_tokens':\s*(\d+)",
         log_line,
@@ -89,13 +90,59 @@ def inspect_usage_line(log_line, threshold=2048):
     if not match:
         return None
     input_tokens, output_tokens, total_tokens = map(int, match.groups())
-    if input_tokens > threshold:
+    if input_tokens >= threshold:
         logger.warning(
             "LLM input tokens (%d) exceeded threshold (%d)",
             input_tokens,
             threshold,
         )
+    else:
+        logger.debug(
+            "LLM input tokens (%d) within threshold (%d)",
+            input_tokens,
+            threshold,
+        )
     return input_tokens, output_tokens, total_tokens
+
+
+def estimate_token_count(text: str) -> int:
+    """Return a quick token estimate using a mixed heuristic.
+
+    Args:
+        text: Input string to approximate token count for.
+
+    Returns:
+        int: Approximate token count.
+    """
+    # Heuristic: count word/punctuation chunks and also scale by 4 chars per token,
+    # then take the max to avoid undercounting.
+    rough_bpe = max(1, len(text) // 4)
+    wordish = len(re.findall(r"\w+|[^\w\s]", text))
+    return max(rough_bpe, wordish)
+
+
+def _ns_to_seconds(ns_value):
+    """Convert nanoseconds to seconds if present.
+
+    Args:
+        ns_value: Duration in nanoseconds or None.
+
+    Returns:
+        float | None: Duration in seconds if convertible, else None.
+    """
+    return ns_value / 1_000_000_000 if ns_value is not None else None
+
+
+def _format_duration(seconds):
+    """Format a duration in seconds for logging.
+
+    Args:
+        seconds: Duration in seconds or None.
+
+    Returns:
+        str: Formatted string like ``0.12s`` or ``n/a`` if missing.
+    """
+    return f"{seconds:.2f}s" if seconds is not None else "n/a"
 
 
 def apply_layout_styles():
@@ -221,12 +268,20 @@ def render_hero():
 
 @st.dialog("Legal Disclaimer")
 def show_disclaimer_dialog():
-    """Render the modal containing the legal disclaimer text."""
+    """Render the modal containing the legal disclaimer text.
+
+    Returns:
+        None
+    """
     st.markdown(DISCLAIMER_TEXT)
 
 
 def render_disclaimer():
-    """Render a clickable control that opens the legal disclaimer modal."""
+    """Render a clickable control that opens the legal disclaimer modal.
+
+    Returns:
+        None
+    """
     if st.button("Disclaimer", type="secondary", use_container_width=True):
         show_disclaimer_dialog()
 
@@ -269,6 +324,7 @@ user_message = st.session_state.pop("queued_message", None) or user_input
 is_new_prompt = user_message and user_message != st.session_state.last_prompt
 
 if is_new_prompt:
+    request_start = time.time()
     logger.info("New prompt received: %s", user_message[:80])
     st.session_state.last_prompt = user_message
 
@@ -289,7 +345,8 @@ if is_new_prompt:
 
     t_chain_start = time.time()
     chain, llm = build_rag_chain()
-    logger.info("build_rag_chain completed in %.2fs", time.time() - t_chain_start)
+    chain_build_duration = time.time() - t_chain_start
+    logger.info("build_rag_chain completed in %.2fs", chain_build_duration)
 
     # Retrieve docs first (so streaming includes them)
     with st.spinner("Retrieving context… 🔍"):
@@ -302,7 +359,8 @@ if is_new_prompt:
             st.error("Could not connect to qdrant server:: %s" % e)
             st.stop()
 
-        logger.info("Retrieval+formatting completed in %.2fs", time.time() - t_retrieve)
+        retrieval_duration = time.time() - t_retrieve
+        logger.info("Retrieval+formatting completed in %.2fs", retrieval_duration)
         docs = rec["docs"]
         context = rec["context"]
         st.session_state.docs = docs
@@ -314,7 +372,12 @@ if is_new_prompt:
         history=history,
     )
 
-    logger.info("LLM Query: %s", prompt_str[:300])
+    logger.info("LLM Query: %s", prompt_str[-1500:])
+    logger.info(
+        "LLM Query total characters: %s (approx tokens=%s)",
+        len(prompt_str),
+        estimate_token_count(prompt_str),
+    )
 
     # === Streaming answer ===
     streamed_text = ""
@@ -322,6 +385,7 @@ if is_new_prompt:
     empty_chunk_count = 0
     first_chunks = []
     last_chunk = None
+    meta_chunk = None
     last_chunk_dump = None
     last_usage = None
     finish_reason = None
@@ -332,6 +396,8 @@ if is_new_prompt:
             try:
                 for chunk in llm.stream(prompt_str):
                     last_chunk = chunk
+                    if getattr(chunk, "response_metadata", None):
+                        meta_chunk = chunk
                     try:
                         last_chunk_dump = chunk.model_dump(exclude_none=True)
                     except Exception:
@@ -345,7 +411,7 @@ if is_new_prompt:
                             chunk, "response_metadata", {}
                         ).get("finish_reason")
                     if chunk_count == 1:
-                        logger.info(
+                        logger.debug(
                             "First chunk meta=%s extra=%s raw=%r",
                             getattr(chunk, "response_metadata", None),
                             getattr(chunk, "additional_kwargs", None),
@@ -372,7 +438,7 @@ if is_new_prompt:
                                 }
                             )
                         if empty_chunk_count <= 3:
-                            logger.info(
+                            logger.debug(
                                 "Empty chunk #%d meta=%s extra=%s raw=%r",
                                 empty_chunk_count,
                                 getattr(chunk, "response_metadata", None),
@@ -383,10 +449,11 @@ if is_new_prompt:
                             getattr(chunk, "usage_metadata", None)
                             and chunk.usage_metadata.get("output_tokens")
                         ):
-                            logger.info(
-                                "Empty chunk carried usage: %s",
-                                chunk.usage_metadata,
+                            usage_line = (
+                                f"Empty chunk carried usage: {chunk.usage_metadata}"
                             )
+                            logger.info(usage_line)
+                            inspect_usage_line(usage_line)
                     streamed_text += content
                     answer_placeholder.markdown(streamed_text + "▌")
             except Exception:
@@ -411,12 +478,12 @@ if is_new_prompt:
         if finish_reason:
             logger.warning("LLM finish_reason: %s", finish_reason)
         if first_chunks:
-            logger.warning(
+            logger.debug(
                 "First chunks detail (up to 5): %s",
                 first_chunks,
             )
         if last_chunk:
-            logger.warning(
+            logger.debug(
                 "Last chunk meta=%s extra=%s raw=%r dump=%s",
                 getattr(last_chunk, "response_metadata", None),
                 getattr(last_chunk, "additional_kwargs", None),
@@ -443,14 +510,14 @@ if is_new_prompt:
             logger.info(usage_line)
             inspect_usage_line(usage_line)
         if finish_reason:
-            logger.info("LLM finish_reason: %s", finish_reason)
+            logger.debug("LLM finish_reason: %s", finish_reason)
         if first_chunks:
-            logger.info(
+            logger.debug(
                 "First chunks detail (up to 5): %s",
                 first_chunks,
             )
         if last_chunk:
-            logger.info(
+            logger.debug(
                 "Last chunk meta=%s extra=%s raw=%r dump=%s",
                 getattr(last_chunk, "response_metadata", None),
                 getattr(last_chunk, "additional_kwargs", None),
@@ -460,7 +527,28 @@ if is_new_prompt:
 
     # Add final answer to chat state
     st.session_state.messages.append({"role": "assistant", "content": streamed_text})
-    logger.info("LLM Answer: %s", streamed_text[:80])
+    total_duration = time.time() - request_start
+    source_meta_chunk = meta_chunk or last_chunk
+    meta = getattr(source_meta_chunk, "response_metadata", {}) if source_meta_chunk else {}
+    meta_total = _ns_to_seconds(meta.get("total_duration"))
+    meta_load = _ns_to_seconds(meta.get("load_duration"))
+    meta_prompt_eval = _ns_to_seconds(meta.get("prompt_eval_duration"))
+    meta_eval = _ns_to_seconds(meta.get("eval_duration"))
+    logger.info(
+        (
+            "LLM Answer: %s "
+            "(model_total=%s, load=%s, prompt_eval=%s, eval=%s, "
+            "retrieve=%.2fs, chain_build=%.2fs, total=%.2fs)"
+        ),
+        streamed_text[:80],
+        _format_duration(meta_total),
+        _format_duration(meta_load),
+        _format_duration(meta_prompt_eval),
+        _format_duration(meta_eval),
+        retrieval_duration,
+        chain_build_duration,
+        total_duration,
+    )
 
 # --- Sources Used ---
 if st.session_state.docs:

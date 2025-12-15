@@ -56,11 +56,28 @@ Answer:
 )
 
 def history_to_text(chat_history):
-    """Convert chat history into a compact text block."""
+    """Convert chat history into a compact text block.
+
+    Args:
+        chat_history: Sequence of prior messages with ``role`` and ``content`` keys.
+
+    Returns:
+        str: Joined lines formatted as ``[role]: content`` for each message.
+    """
     return "\n".join(f"[{m['role']}]: {m['content']}" for m in chat_history)
 
+
 def build_prompt(question: str, context: str, history=None) -> str:
-    """Build the full prompt string with instructions, context, and optional history."""
+    """Build the full prompt string with instructions, context, and optional history.
+
+    Args:
+        question: User question to answer.
+        context: Retrieved context string provided to the model.
+        history: Optional prior chat messages to include for continuity.
+
+    Returns:
+        str: Fully formatted prompt ready for the LLM.
+    """
     history_block = ""
     if history:
         history_block = f"<history>\n{history_to_text(history)}\n</history>"
