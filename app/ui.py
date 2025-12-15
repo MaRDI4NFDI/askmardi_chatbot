@@ -1,3 +1,4 @@
+import re
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -69,6 +70,32 @@ def init_state():
 init_state()
 logger = get_logger("ui")
 config_ok = check_config()
+
+
+def inspect_usage_line(log_line, threshold=2048):
+    """Extract token counts from a usage log line and warn if input crosses threshold.
+
+    Args:
+        log_line: Raw log line containing token usage details.
+        threshold: Input token threshold for issuing a warning.
+
+    Returns:
+        tuple | None: Parsed (input_tokens, output_tokens, total_tokens) if found, else None.
+    """
+    match = re.search(
+        r"input_tokens':\s*(\d+).*output_tokens':\s*(\d+).*total_tokens':\s*(\d+)",
+        log_line,
+    )
+    if not match:
+        return None
+    input_tokens, output_tokens, total_tokens = map(int, match.groups())
+    if input_tokens > threshold:
+        logger.warning(
+            "LLM input tokens (%d) exceeded threshold (%d)",
+            input_tokens,
+            threshold,
+        )
+    return input_tokens, output_tokens, total_tokens
 
 
 def apply_layout_styles():
@@ -378,7 +405,9 @@ if is_new_prompt:
             stream_duration,
         )
         if last_usage:
-            logger.warning("LLM usage (last seen): %s", last_usage)
+            usage_line = f"LLM usage (last seen): {last_usage}"
+            logger.warning(usage_line)
+            inspect_usage_line(usage_line)
         if finish_reason:
             logger.warning("LLM finish_reason: %s", finish_reason)
         if first_chunks:
@@ -410,7 +439,9 @@ if is_new_prompt:
                 chunk_count,
             )
         if last_usage:
-            logger.info("LLM usage (last seen): %s", last_usage)
+            usage_line = f"LLM usage (last seen): {last_usage}"
+            logger.info(usage_line)
+            inspect_usage_line(usage_line)
         if finish_reason:
             logger.info("LLM finish_reason: %s", finish_reason)
         if first_chunks:
@@ -434,7 +465,7 @@ if is_new_prompt:
 # --- Sources Used ---
 if st.session_state.docs:
     st.markdown("---")
-    st.subheader("Sources Used 📌")
+    st.subheader("Sources Used")
 
     grouped = group_sources(st.session_state.docs)
 

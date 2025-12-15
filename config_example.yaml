@@ -8,6 +8,7 @@ ollama:
   host: "https://ollama.zib.de/ollama"
   model_name: "gemma3:27b"
   api_key: "MY_KEY"
+  max_context_size: 2048            # Optional max context window (tokens) for LLM
 
 embedding:
   model_name: "sentence-transformers/all-MiniLM-L6-v2"

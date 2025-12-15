@@ -14,7 +14,9 @@ logger = get_logger("rag_chain")
 
 
 @st.cache_resource
-def build_cached_chain(qdrant_url, qdrant_api_key, collection, retrieve_limit, context_limit, embed_model, llm_host, llm_model, ollama_api_key):
+def build_cached_chain(qdrant_url, qdrant_api_key, collection,
+                       retrieve_limit, context_limit, embed_model,
+                       llm_host, llm_model, ollama_api_key, llm_context_size=None):
     """Build and cache the retrieval chain and LLM client to avoid per-prompt rebuilds.
 
     Args:
@@ -27,6 +29,7 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, retrieve_limit, c
         llm_host: Ollama host URL.
         llm_model: LLM model name.
         ollama_api_key: Optional LLM API key.
+        llm_context_size: Optional maximum context window for the LLM (tokens).
 
     Returns:
         Tuple[Runnable, ChatOllama]: Chain plus LLM client for streaming.
@@ -77,6 +80,7 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, retrieve_limit, c
             if ollama_api_key
             else None
         ),
+        num_ctx=llm_context_size,
     )
     logger.info("LLM client ready (model=%s)", llm_model)
 
@@ -127,6 +131,7 @@ def build_rag_chain():
         llm_host=cfg["ollama"]["host"],
         llm_model=cfg["ollama"]["model_name"],
         ollama_api_key=cfg["ollama"].get("api_key"),
+        llm_context_size=cfg["ollama"].get("max_context_size"),
     )
 
     return chain, llm
