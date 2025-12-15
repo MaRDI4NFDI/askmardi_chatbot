@@ -1,5 +1,10 @@
+import time
 from typing import List
 from langchain_core.documents import Document
+from qdrant_client.http.exceptions import ResponseHandlingException
+from app.logger import get_logger
+
+logger = get_logger("retriever")
 
 
 def create_retriever(client, embeddings, collection: str, limit: int = 5):
@@ -14,6 +19,7 @@ def create_retriever(client, embeddings, collection: str, limit: int = 5):
     Returns:
         Callable[[str], List[Document]]: Function that performs similarity search.
     """
+
     def custom_retrieve(query: str) -> List[Document]:
         """Retrieve the top documents for the given query from Qdrant.
 
@@ -24,16 +30,39 @@ def create_retriever(client, embeddings, collection: str, limit: int = 5):
             List[Document]: Retrieved documents with payload metadata.
         """
         query_embedding = embeddings.embed_query(query)
-        res = client.query_points(
-            collection_name=collection,
-            with_vectors=True,
-            query=query_embedding,
-            limit=limit,
-        )
+
+        last_exc = None
+        res = None
+
+        for attempt in range(1, 6):
+            try:
+                res = client.query_points(
+                    collection_name=collection,
+                    with_vectors=True,
+                    query=query_embedding,
+                    limit=limit,
+                )
+                break  # success
+            except ResponseHandlingException as exc:
+                last_exc = exc
+                logger.warning(
+                    "Qdrant query failed (attempt %d/5): %s",
+                    attempt,
+                    exc,
+                )
+                if attempt < 5:
+                    time.sleep(1)
+
+        if res is None:
+            logger.error(
+                "Qdrant query failed after 5 attempts. Raising last exception."
+            )
+            raise last_exc
+
         docs = [
             Document(
                 page_content=p.payload.get("page_content", ""),
-                metadata=p.payload
+                metadata=p.payload,
             )
             for p in res.points
         ]
