@@ -2,7 +2,7 @@ import time
 import streamlit as st
 from qdrant_client import QdrantClient
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 
 from app.logger import get_logger
 from app.config import load_config
@@ -24,12 +24,12 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, retrieve_limit, c
         retrieve_limit: Max number of documents to pull from Qdrant.
         context_limit: Max number of docs to include in the LLM context.
         embed_model: Embedding model name.
-        llm_host: OpenAI-compatible host URL.
+        llm_host: Ollama host URL.
         llm_model: LLM model name.
         ollama_api_key: Optional LLM API key.
 
     Returns:
-        Tuple[Runnable, ChatOpenAI]: Chain plus LLM client for streaming.
+        Tuple[Runnable, ChatOllama]: Chain plus LLM client for streaming.
     """
     t_start = time.time()
 
@@ -67,12 +67,16 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection, retrieve_limit, c
 
     retriever = RunnableLambda(timed_retriever)
 
-    llm = ChatOpenAI(
+    llm = ChatOllama(
         base_url=llm_host,
-        api_key=ollama_api_key,
-        model_name=llm_model,
+        model=llm_model,
         temperature=0,
         streaming=True,
+        client_kwargs=(
+            {"headers": {"Authorization": f"Bearer {ollama_api_key}"}}
+            if ollama_api_key
+            else None
+        ),
     )
     logger.info("LLM client ready (model=%s)", llm_model)
 
@@ -107,7 +111,7 @@ def build_rag_chain():
     """Build the retrieval chain and LLM client.
 
     Returns:
-        Tuple[Runnable, ChatOpenAI]: Chain that fetches docs and context, plus the LLM client for streaming.
+        Tuple[Runnable, ChatOllama]: Chain that fetches docs and context, plus the LLM client for streaming.
     """
     t_start = time.time()
     cfg = load_config()

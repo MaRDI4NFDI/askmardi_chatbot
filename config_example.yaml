@@ -1,12 +1,12 @@
 qdrant:
   url: "http://localhost:6333"
   collection: "software_docs"
-  limit: 5                         # Number of documents to retrieve per query
-  context_limit: 3                 # Number of documents to send to the LLM context
+  limit: 7                         # Number of documents to retrieve per query
+  context_limit: 5                 # Number of documents to send to the LLM context
 
 ollama:
-  host: "https://ollama.zib.de/api"
-  model_name: "deepseek-r1:70b"
+  host: "https://ollama.zib.de/ollama"
+  model_name: "gemma3:27b"
   api_key: "MY_KEY"
 
 embedding:

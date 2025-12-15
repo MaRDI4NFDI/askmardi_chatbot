@@ -1,6 +1,6 @@
 import os
 import yaml
-from openai import OpenAI
+from ollama import Client
 from qdrant_client import QdrantClient
 from app.logger import get_logger
 
@@ -54,11 +54,14 @@ def check_config():
         logger.warning("Qdrant connectivity check failed: %s", exc)
 
     try:
-        llm_client = OpenAI(
-            base_url=cfg["ollama"]["host"],
-            api_key=cfg["ollama"].get("api_key"),
+        headers = None
+        if cfg["ollama"].get("api_key"):
+            headers = {"Authorization": f"Bearer {cfg['ollama']['api_key']}"}
+        llm_client = Client(
+            host=cfg["ollama"]["host"],
+            headers=headers,
         )
-        llm_client.models.list()
+        llm_client.list()
         logger.info("LLM connectivity check succeeded")
     except Exception as exc:
         ok = False
