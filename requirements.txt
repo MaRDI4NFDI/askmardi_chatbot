@@ -17,3 +17,6 @@ ollama>=0.4.0
 # Configuration + env management
 pyyaml>=6.0.2
 python-dotenv>=1.0.1
+
+# Testing
+pytest>=8.0.0
