@@ -226,7 +226,7 @@ with action_col:
     render_disclaimer()
 
 if not config_ok:
-    st.error("Config checks failed. Qdrant or LLM not reachable.")
+    st.error("Config missing or checks failed. Ensure config.yaml exists and services are reachable.")
     st.stop()
 
 # --- Render existing chat history ---

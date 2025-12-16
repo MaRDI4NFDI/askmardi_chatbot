@@ -11,13 +11,20 @@ def load_config():
     """Load configuration from config.yaml with optional env overrides.
 
     Returns:
-        dict: Parsed configuration dictionary with potential LLM API key override.
+        dict | None: Parsed configuration dictionary, or None when the file is missing.
     """
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
 
     logger.info("Loading config from %s", config_path)
-    with open(config_path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+    except FileNotFoundError:
+        logger.error(
+            "Config file not found at %s. Create it from config_example.yaml before running the app.",
+            config_path,
+        )
+        return None
 
     # Allow API keys to be overridden via env
     if "OLLAMA_API_KEY" in os.environ:
@@ -40,6 +47,9 @@ def check_config():
         bool: True if both checks succeed, False otherwise.
     """
     cfg = load_config()
+    if cfg is None:
+        logger.error("Config could not be loaded; skipping connectivity checks.")
+        return False
     ok = True
 
     try:
