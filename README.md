@@ -22,3 +22,6 @@ docker run --rm \
   -e QDRANT_URL=http://your-qdrant.com:6333 \
   askmardi-chatbot:dev
 ```
+
+#### Hints
+- Use  `/?collection=my_other_collection` to change the qdrant collection on the fly.
