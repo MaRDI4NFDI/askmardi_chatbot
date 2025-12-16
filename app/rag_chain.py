@@ -15,8 +15,8 @@ logger = get_logger("rag_chain")
 
 @st.cache_resource
 def build_cached_chain(qdrant_url, qdrant_api_key, collection,
-                       retrieve_limit, context_limit, embed_model,
-                       llm_host, llm_model, ollama_api_key, llm_context_size=None):
+                       retrieve_limit, context_limit, candidate_multiplier, embed_model,
+                       llm_host, llm_model, ollama_api_key, llm_context_size=None, _reranker=None):
     """Build and cache the retrieval chain and LLM client to avoid per-prompt rebuilds.
 
     Args:
@@ -25,11 +25,13 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
         collection: Target collection name.
         retrieve_limit: Max number of documents to pull from Qdrant.
         context_limit: Max number of docs to include in the LLM context.
+        candidate_multiplier: How many more docs to fetch before reranking.
         embed_model: Embedding model name.
         llm_host: Ollama host URL.
         llm_model: LLM model name.
         ollama_api_key: Optional LLM API key.
         llm_context_size: Optional maximum context window for the LLM (tokens).
+        _reranker: Optional reranker instance (e.g., FlashRank Ranker).
 
     Returns:
         Tuple[Runnable, ChatOllama]: Chain plus LLM client for streaming.
@@ -47,11 +49,14 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
     embeddings = embedder.embeddings
     logger.info("Loaded embeddings in %.2fs (cached)", time.time() - t_embed)
 
+    # Build retriever with optional FlashRank reranker
     retriever_fn = create_retriever(
         client=client,
         embeddings=embeddings,
         collection=collection,
         limit=retrieve_limit,
+        candidate_multiplier=candidate_multiplier,
+        reranker=_reranker,
     )
 
     def timed_retriever(query):
@@ -64,7 +69,13 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
             list: Retrieved documents.
         """
         t0 = time.time()
-        docs = retriever_fn(query)
+
+        try:
+            docs = retriever_fn(query)
+        except Exception:
+            logger.exception("Retriever failed")
+            raise
+
         logger.info(f"Retrieval: {time.time() - t0:.2f}s")
         return docs
 
@@ -111,13 +122,18 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
     return chain, llm
 
 
-def build_rag_chain(collection_override: str | None = None):
+def build_rag_chain(
+        collection_override: str | None = None,
+        reranker=None,
+):
     """Build the retrieval chain and LLM client.
 
     Args:
         collection_override (str | None): Optional collection name supplied externally
             (e.g., via URL query params). When not provided, the collection from
             ``config.yaml`` is used.
+        reranker: Optional reranker instance (e.g., FlashRank Ranker). When provided,
+            retrieved documents are reranked before being passed to the LLM.
 
     Returns:
         Tuple[Runnable, ChatOllama]: Chain that fetches docs and context, plus the LLM client for streaming.
@@ -138,11 +154,13 @@ def build_rag_chain(collection_override: str | None = None):
         collection=collection_name,
         retrieve_limit=cfg["qdrant"].get("limit", 10),
         context_limit=cfg["qdrant"].get("context_limit", 10),
+        candidate_multiplier=cfg["qdrant"].get("candidate_multiplier", 4),
         embed_model=cfg["embedding"]["model_name"],
         llm_host=cfg["ollama"]["host"],
         llm_model=cfg["ollama"]["model_name"],
         ollama_api_key=cfg["ollama"].get("api_key"),
         llm_context_size=cfg["ollama"].get("max_context_size"),
+        _reranker=reranker,
     )
 
     return chain, llm

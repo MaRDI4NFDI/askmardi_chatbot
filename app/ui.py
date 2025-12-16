@@ -52,6 +52,11 @@ respective offerings. For more information on how MaRDI may use your
 content, see https://www.mardi4nfdi.de .
 """
 
+from flashrank import Ranker
+
+@st.cache_resource(show_spinner="Loading reranker...")
+def get_flashrank():
+    return Ranker(model_name="ms-marco-MiniLM-L-12-v2")
 
 # --- Session state ---
 def init_state():
@@ -320,7 +325,17 @@ if is_new_prompt:
     collection_override = get_collection_override()
     if collection_override:
         logger.info("Collection override detected from URL param: %s", collection_override)
-    chain, llm = build_rag_chain(collection_override=collection_override)
+
+    # --------------------------------------------------------------
+    # Build RAG chain with FlashRank injected
+    # --------------------------------------------------------------
+
+    ranker = get_flashrank()
+    chain, llm = build_rag_chain(
+        collection_override=get_collection_override(),
+        reranker=ranker,
+    )
+
     chain_build_duration = time.time() - t_chain_start
     logger.info("build_rag_chain completed in %.2fs", chain_build_duration)
 
