@@ -1,8 +1,8 @@
 qdrant:
   url: "http://localhost:6333"
-  collection: "software_docs"
-  limit: 7                         # Number of documents to retrieve per query
-  context_limit: 5                 # Number of documents to send to the LLM context
+  collection: "mardi_embeddings_v1"
+  limit: 10                        # Number of documents to retrieve per query
+  context_limit: 10                # Number of documents to send to the LLM context
 
 ollama:
   host: "https://ollama.zib.de/ollama"

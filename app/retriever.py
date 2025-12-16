@@ -72,13 +72,22 @@ def create_retriever(client, embeddings, collection: str, limit: int = 5):
 
 
 def format_docs(docs: List[Document], context_limit: int) -> str:
-    """Join the top documents into a context string for the LLM.
+    """Join the top documents into a context string for the LLM with provenance.
 
     Args:
         docs: Documents returned from the retriever.
         context_limit: Max number of docs to include in the context.
 
     Returns:
-        str: Concatenated page contents from the first few documents.
+        str: Concatenated page contents from the first few documents, annotated with metadata.
     """
-    return "\n\n".join(doc.page_content for doc in docs[:context_limit])
+    formatted = []
+    for doc in docs[:context_limit]:
+        meta = doc.metadata or {}
+        package = meta.get("package", "unknown")
+        version = meta.get("version", "unknown")
+        page = meta.get("page", "unknown")
+        chunk_idx = meta.get("chunk_index", "unknown")
+        prefix = f"[{package} v{version} — page {page}, chunk {chunk_idx}]"
+        formatted.append(f"{prefix}\n{doc.page_content}")
+    return "\n\n".join(formatted)

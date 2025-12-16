@@ -134,27 +134,47 @@ def get_history(n_turns=HISTORY_LENGTH):
 
 
 def group_sources(docs):
-    """Group retrieved pages by title + QID.
+    """Group retrieved chunks by package/version + QID.
 
     Args:
         docs: List of LangChain Documents returned from retrieval.
 
     Returns:
-        dict: Mapping of title to pages list and optional QID.
+        dict: Mapping of package/version to chunk indices and optional QID/source/pages.
     """
     grouped = {}
     for doc in docs:
         meta = doc.metadata
-        title = meta.get("title") or meta.get("source") or "Unknown Document"
-        page = meta.get("page", "Unknown")
+        main_title = meta.get("title") or "unknown"
+        package = meta.get("package") or "unknown"
+        version = meta.get("version") or "unknown"
+
+        title = (
+            f"{package} ({version})"
+            if package != "unknown" and version != "unknown"
+            else package
+            if package != "unknown"
+            else main_title
+        )
+
+        chunk_idx = meta.get("chunk_index", "unknown")
+        page = meta.get("page", "unknown")
         qid = meta.get("qid")
+        source = meta.get("source")
 
         if title not in grouped:
-            grouped[title] = {"pages": set(), "qid": qid}
+            grouped[title] = {
+                "chunks": set(),
+                "pages": set(),
+                "qid": qid,
+                "source": source,
+            }
 
+        grouped[title]["chunks"].add(chunk_idx)
         grouped[title]["pages"].add(page)
 
     for k in grouped:
+        grouped[k]["chunks"] = sorted(list(grouped[k]["chunks"]))
         grouped[k]["pages"] = sorted(list(grouped[k]["pages"]))
     return grouped
 
@@ -514,13 +534,16 @@ if st.session_state.docs:
     grouped = group_sources(st.session_state.docs)
 
     for title, info in grouped.items():
-        pages_str = ", ".join(str(p) for p in info["pages"])
-        qid = info.get("qid")
+        chunk_str = ", ".join(str(p) for p in info["chunks"])
+        page_str = ", ".join(str(p) for p in info["pages"])
+        qid = info.get("qid") or "unknown"
+        source = info.get("source")
 
-        line = f"**{title}** — pages {pages_str}"
-        if qid:
-            line += (
-                f" · [Open in Portal]"
-                f"(https://portal.mardi4nfdi.de/wiki/Item:{qid})"
-            )
+        line = f"**{title}** — pages {page_str}"
+        if source:
+            line += f" (source: {source})"
+        line += (
+            f" · [Open in Portal]"
+            f"(https://portal.mardi4nfdi.de/wiki/Item:{qid})"
+        )
         st.write(line)
