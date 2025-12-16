@@ -1,3 +1,5 @@
+import os
+import signal
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -226,8 +228,10 @@ with action_col:
     render_disclaimer()
 
 if not config_ok:
-    st.error("Config missing or checks failed. Ensure config.yaml exists and services are reachable.")
-    st.stop()
+    st.error("Config missing or checks failed. Ensure config.yaml exists and services are reachable. Will terminate now.")
+    time.sleep(5)
+    os.kill(os.getpid(), signal.SIGTERM)
+
 
 # --- Render existing chat history ---
 for msg in st.session_state.messages:
