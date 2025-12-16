@@ -111,8 +111,13 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
     return chain, llm
 
 
-def build_rag_chain():
+def build_rag_chain(collection_override: str | None = None):
     """Build the retrieval chain and LLM client.
+
+    Args:
+        collection_override (str | None): Optional collection name supplied externally
+            (e.g., via URL query params). When not provided, the collection from
+            ``config.yaml`` is used.
 
     Returns:
         Tuple[Runnable, ChatOllama]: Chain that fetches docs and context, plus the LLM client for streaming.
@@ -121,10 +126,16 @@ def build_rag_chain():
     cfg = load_config()
     logger.info("Config loaded in %.2fs", time.time() - t_start)
 
+    collection_name = collection_override or cfg["qdrant"]["collection"]
+    if collection_override:
+        logger.info("Using Qdrant collection override: %s", collection_name)
+    else:
+        logger.info("Using default Qdrant collection from config: %s", collection_name)
+
     chain, llm = build_cached_chain(
         qdrant_url=cfg["qdrant"]["url"],
         qdrant_api_key=cfg["qdrant"].get("api_key"),
-        collection=cfg["qdrant"]["collection"],
+        collection=collection_name,
         retrieve_limit=cfg["qdrant"].get("limit", 5),
         context_limit=cfg["qdrant"].get("context_limit", 3),
         embed_model=cfg["embedding"]["model_name"],

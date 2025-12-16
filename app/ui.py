@@ -24,16 +24,16 @@ EMPTY_ANSWER_FALLBACK = (
     "rephrase your question."
 )
 SUGGESTIONS = {
-    "🔔 Regularization in glmnet": (
+    "🔧 Regularization in glmnet": (
         "How does the glmnet package implement regularization for linear and logistic regression?"
     ),
-    "🌦️ Network analysis": (
+    "🕸️ Network analysis": (
         "Show available packages for graph and network analysis and how measures such as centrality " +
         "or connectivity are defined."
     ),
-    "🧮 Time-series models": (
-        "How are time-series models mathematically represented, and "+
-        "which criteria are used to compare or select competing models according to the package documentation?"
+    "📈 ODE packages": (
+        "What packages exist for ODE numerics analysis. "+
+        "Give a brief overview and some code examples."
     ),
 }
 
@@ -217,6 +217,26 @@ def render_disclaimer():
         show_disclaimer_dialog()
 
 
+def get_collection_override() -> str | None:
+    """Extract a Qdrant collection override from query parameters if provided.
+
+    Returns:
+        str | None: The collection name supplied via the ``collection`` query parameter,
+            or ``None`` when absent.
+    """
+    params = st.query_params
+    raw_value = params.get("collection")
+    if raw_value is None:
+        return None
+
+    # st.query_params returns str for single values and list for repeated keys.
+    if isinstance(raw_value, (list, tuple)):
+        raw_value = raw_value[0]
+
+    override = str(raw_value).strip()
+    return override or None
+
+
 st.set_page_config(page_title="ASK::MARDI Chatbot", layout="centered")
 apply_layout_styles()
 
@@ -277,7 +297,10 @@ if is_new_prompt:
         st.markdown(user_message)
 
     t_chain_start = time.time()
-    chain, llm = build_rag_chain()
+    collection_override = get_collection_override()
+    if collection_override:
+        logger.info("Collection override detected from URL param: %s", collection_override)
+    chain, llm = build_rag_chain(collection_override=collection_override)
     chain_build_duration = time.time() - t_chain_start
     logger.info("build_rag_chain completed in %.2fs", chain_build_duration)
 
