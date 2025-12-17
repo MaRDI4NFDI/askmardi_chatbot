@@ -72,17 +72,34 @@ def build_cached_chain(
         mardi_wiki=mardi_wiki,
     )
 
-    def timed_retriever(query: str):
-        """Wrap the retriever to log latency."""
+    def timed_retriever(x):
+        """Retrieve documents while tracking duration for logging.
+
+        Args:
+            x: Either a query string or a dict containing:
+               - question (str)
+               - progress_cb (callable | None)
+
+        Returns:
+            list[Document]: Retrieved documents.
+        """
+        if isinstance(x, dict):
+            query = x["question"]
+            progress_cb = x.get("progress_cb")
+        else:
+            query = x
+            progress_cb = None
+
         t0 = time.time()
         try:
-            docs = retriever_fn(query)
+            docs = retriever_fn(query, progress_cb=progress_cb)
         except Exception:
             logger.exception("Retriever failed")
             raise
 
         logger.info("Retrieval: %.2fs", time.time() - t0)
         return docs
+
 
     retriever = RunnableLambda(timed_retriever)
 
@@ -114,11 +131,16 @@ def build_cached_chain(
         }
 
     chain = (
-        RunnablePassthrough()
-        | {
-            "docs": lambda x: retriever.invoke(x["question"]),
-        }
-        | RunnableLambda(assemble)
+            RunnablePassthrough()
+            | {
+                "docs": lambda x: retriever.invoke(
+                    {
+                        "question": x["question"],
+                        "progress_cb": x.get("progress_cb"),
+                    }
+                ),
+            }
+            | RunnableLambda(assemble)
     )
 
     logger.info("Chain built in %.2fs (cached)", time.time() - t_start)

@@ -3,6 +3,7 @@ import signal
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from queue import SimpleQueue
 
 import streamlit as st
 
@@ -334,21 +335,41 @@ if is_new_prompt:
     logger.info("build_rag_chain completed in %.2fs", chain_build_duration)
 
     # Retrieve docs first (so streaming includes them)
-    with st.spinner("Retrieving context… 🔍"):
+    progress_events = SimpleQueue()
+
+    def progress(msg: str):
+        """Collect retrieval progress events (thread-safe)."""
+        progress_events.put(msg)
+
+
+    with st.status("Retrieving context… 🔍", expanded=True) as status:
         t_retrieve = time.time()
 
         try:
-            rec = chain.invoke({"question": user_message})
+            rec = chain.invoke(
+                {
+                    "question": user_message,
+                    "progress_cb": progress,
+                }
+            )
         except Exception as e:
+            status.update(label="Retrieving context failed", state="error")
             logger.exception("Could not connect to qdrant server: %s", e)
             st.error("Could not connect to qdrant server:: %s" % e)
             st.stop()
 
-        retrieval_duration = time.time() - t_retrieve
-        logger.info("Retrieval+formatting completed in %.2fs", retrieval_duration)
-        docs = rec["docs"]
-        context = rec["context"]
-        st.session_state.docs = docs
+        # Drain and render progress events on the UI thread
+        while not progress_events.empty():
+            status.write(progress_events.get())
+
+        status.update(label="Retrieving context… 🔍", state="complete")
+
+    retrieval_duration = time.time() - t_retrieve
+    logger.info("Retrieval+formatting completed in %.2fs", retrieval_duration)
+
+    docs = rec["docs"]
+    context = rec["context"]
+    st.session_state.docs = docs
 
     # Build prompt with context + history
     prompt_str = build_prompt(

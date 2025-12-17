@@ -160,7 +160,11 @@ def create_retriever(
         candidate_multiplier,
     )
 
-    def custom_retrieve(query: str) -> List[Document]:
+    def custom_retrieve(query: str, progress_cb=None) -> List[Document]:
+
+        if progress_cb:
+            progress_cb("Embedding query")
+
         query_embedding = embeddings.embed_query(query)
         dense_res = None
         last_exc = None
@@ -168,6 +172,9 @@ def create_retriever(
         # --------------------------------------------------
         # Dense retrieval
         # --------------------------------------------------
+        if progress_cb:
+            progress_cb("Dense vector search...")
+
         for attempt in range(1, 6):
             try:
                 dense_res = client.query_points(
@@ -207,6 +214,9 @@ def create_retriever(
         # --------------------------------------------------
         # Sparse retrieval
         # --------------------------------------------------
+        if progress_cb:
+            progress_cb("Sparse keyword search ...")
+
         sparse_limit = limit * candidate_multiplier
         if is_lexical_query(query):
             sparse_limit *= 2
@@ -227,6 +237,9 @@ def create_retriever(
         # --------------------------------------------------
         wiki_docs: List[Document] = []
         if mardi_wiki is not None:
+            if progress_cb:
+                progress_cb("MaRDI Wiki search (Portal)")
+
             try:
                 logger.info("Starting MaRDI Wiki retrieval ...")
                 wiki_docs = mardi_wiki.get_relevant_documents(query)
@@ -244,6 +257,9 @@ def create_retriever(
         # --------------------------------------------------
         # Merge & deduplicate
         # --------------------------------------------------
+        if progress_cb:
+            progress_cb("Merging & deduplicating candidates")
+
         seen = set()
         merged: List[Document] = []
 
@@ -279,6 +295,10 @@ def create_retriever(
         # Optional FlashRank reranking
         # --------------------------------------------------
         if reranker is not None:
+
+            if progress_cb:
+                progress_cb("Reranking ...")
+
             logger.info("Reranking %d merged docs with FlashRank", len(merged))
             merged = rerank_docs(
                 query=query,
