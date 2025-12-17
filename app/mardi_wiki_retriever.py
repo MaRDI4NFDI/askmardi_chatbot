@@ -11,7 +11,10 @@ from app.logger import get_logger
 from bs4 import BeautifulSoup
 from langchain_core.documents import Document
 
-HARD_TIMEOUT_SECONDS = 3.0
+import spacy
+from functools import lru_cache
+
+HARD_TIMEOUT_SECONDS = 5.0
 
 MAIN_NAMESPACE = "0"
 
@@ -36,6 +39,14 @@ ENTITY_NAMESPACES = "|".join([
 ])
 
 logger = get_logger("MardiWikiRetriever")
+
+@lru_cache(maxsize=1)
+def _load_spacy_model():
+    # Lazy-load to avoid startup penalty
+    return spacy.load(
+        "en_core_web_sm",
+        disable=["tagger", "parser", "lemmatizer", "attribute_ruler", "morphologizer"]
+    )
 
 class MardiWikiRetriever:
     """
@@ -151,22 +162,41 @@ class MardiWikiRetriever:
 
     def _search(self, query: str) -> List[dict]:
         """
-        Query-dependent namespace routing.
+        Query-dependent namespace routing with spaCy-based query normalization.
+
+        - spaCy normalization improves entity retrieval for questions like
+          "who is peter pan"
         - Lexical / entity queries → portal + KG namespaces
         - Semantic queries → portal pages only
         """
 
-        if _is_lexical_query(query):
+        # --------------------------------------------------
+        # Normalize query for MediaWiki search (spaCy)
+        # --------------------------------------------------
+        wiki_query = self._normalize_query_for_wiki(query)
+        logger.info(
+            "[MardiWiki_search] Normalized query for wiki-query: '%s' → '%s'",
+            query,
+            wiki_query,
+        )
+
+        # --------------------------------------------------
+        # Namespace routing
+        # --------------------------------------------------
+        if self._is_lexical_query(wiki_query):
             srnamespace = ENTITY_NAMESPACES
-            logger.info("[MardiWiki_search] Using all namespaces...")
+            logger.info("[MardiWiki_search] Using (almost) ALL namespaces")
         else:
             srnamespace = MAIN_NAMESPACE
-            logger.info("[MardiWiki_search] Using ONLY MAIN namespace...")
+            logger.info("[MardiWiki_search] Using ONLY MAIN namespace")
 
+        # --------------------------------------------------
+        # MediaWiki search request
+        # --------------------------------------------------
         params = {
             "action": "query",
             "list": "search",
-            "srsearch": query,
+            "srsearch": wiki_query,
             "srlimit": self.top_k,
             "srnamespace": srnamespace,
             "format": "json",
@@ -174,6 +204,7 @@ class MardiWikiRetriever:
 
         r = requests.get(self.api_url, params=params, timeout=self.timeout)
         r.raise_for_status()
+
         return r.json().get("query", {}).get("search", [])
 
 
@@ -334,10 +365,42 @@ class MardiWikiRetriever:
         s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
         return s or "section"
 
-def _is_lexical_query(query: str) -> bool:
-    q = query.strip()
-    return (
-        len(q) <= 30
-        or q.isupper()
-        or any(c.isdigit() for c in q)
-    )
+    def _is_lexical_query(self, query: str) -> bool:
+        q = query.strip()
+        return (
+            len(q) <= 30
+            or q.isupper()
+            or any(c.isdigit() for c in q)
+        )
+
+    def _normalize_query_for_wiki(self, query: str) -> str:
+        """
+        Normalize a user query for MediaWiki search using spaCy.
+
+        Strategy:
+          1. Prefer named entities (Person, Org, Work, etc.)
+          2. Fallback: remove stopwords & punctuation
+          3. Final fallback: original query
+        """
+        try:
+            nlp = _load_spacy_model()
+            doc = nlp(query)
+        except Exception as exc:
+            raise exc
+#            return query
+
+        # 1) Prefer named entities (best for MaRDI entities)
+        ents = [ent.text.strip() for ent in doc.ents if ent.text.strip()]
+        if ents:
+            return " ".join(ents)
+
+        # 2) Stopword-stripped fallback
+        tokens = [
+            t.text for t in doc
+            if not t.is_stop and not t.is_punct and t.text.strip()
+        ]
+        if tokens:
+            return " ".join(tokens)
+
+        # 3) Fallback to original query
+        return query

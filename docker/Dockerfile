@@ -15,6 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install spaCy language model
+RUN python -m spacy download en_core_web_sm
+
 COPY . .
 # Provide a default config inside the image from the example.
 RUN cp config_example.yaml config.yaml

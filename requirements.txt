@@ -7,7 +7,10 @@ langchain-core>=0.3.0
 langchain-ollama>=0.2.0
 sentence-transformers>=2.7.0
 langchain-huggingface
+
+# NLP tools
 flashrank
+spacy
 
 # Qdrant VectorDB
 qdrant-client>=1.12.0
