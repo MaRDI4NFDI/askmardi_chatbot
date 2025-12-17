@@ -57,6 +57,11 @@ from flashrank import Ranker
 
 @st.cache_resource(show_spinner="Loading reranker...")
 def get_flashrank():
+    """Return a cached FlashRank ranker instance for reranking retrieved docs.
+
+    Returns:
+        flashrank.ranker.Ranker: MiniLM-based reranker used in the RAG chain.
+    """
     return Ranker(model_name="ms-marco-MiniLM-L-12-v2")
 
 # --- Session state ---
@@ -140,6 +145,14 @@ def get_history(n_turns=HISTORY_LENGTH):
 
 
 def group_sources(docs):
+    """Group retrieved documents by logical source for display.
+
+    Args:
+        docs (list): LangChain document objects collected from retrievers.
+
+    Returns:
+        dict: Mapping of grouped source identifiers to aggregated metadata.
+    """
     grouped = {}
 
     for doc in docs:
@@ -349,6 +362,7 @@ if is_new_prompt:
         rec_holder: dict[str, object] = {"rec": None, "exc": None}
 
         def retrieve():
+            """Execute retrieval in a background thread and capture result/exception."""
             try:
                 rec_holder["rec"] = chain.invoke(
                     {

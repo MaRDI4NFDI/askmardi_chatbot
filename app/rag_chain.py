@@ -124,6 +124,14 @@ def build_cached_chain(
     # Chain assembly
     # --------------------------------------------------
     def assemble(x):
+        """Format retriever output into docs + string context payload.
+
+        Args:
+            x (dict): Input dict containing ``docs`` from the retriever.
+
+        Returns:
+            dict: Dict with ``docs`` passthrough and concatenated ``context`` string.
+        """
         docs = x["docs"]
         return {
             "docs": docs,

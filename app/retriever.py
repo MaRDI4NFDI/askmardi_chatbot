@@ -161,6 +161,18 @@ def create_retriever(
     )
 
     def custom_retrieve(query: str, progress_cb=None) -> List[Document]:
+        """Retrieve hybrid results combining dense, sparse, and wiki searches.
+
+        Args:
+            query (str): User question text.
+            progress_cb (Callable | None): Optional callback to emit UI progress strings.
+
+        Returns:
+            List[Document]: Retrieved and scored candidate documents.
+
+        Raises:
+            ResponseHandlingException: If dense retrieval repeatedly fails.
+        """
 
         if progress_cb:
             progress_cb("Searching knowledge-base ...")
@@ -260,6 +272,7 @@ def create_retriever(
         merged: List[Document] = []
 
         def doc_key(doc: Document) -> str:
+            """Build a stable deduplication key for a document."""
             m = doc.metadata or {}
             return (
                 f"{m.get('qid','?')}:"

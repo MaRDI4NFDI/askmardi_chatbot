@@ -42,6 +42,11 @@ logger = get_logger("MardiWikiRetriever")
 
 @lru_cache(maxsize=1)
 def _load_spacy_model():
+    """Load and cache the lightweight spaCy model for query normalization.
+
+    Returns:
+        spacy.Language: spaCy language pipeline with heavy components disabled.
+    """
     # Lazy-load to avoid startup penalty
     return spacy.load(
         "en_core_web_sm",
@@ -72,6 +77,15 @@ class MardiWikiRetriever:
         max_section_chars: int = 6000,
         include_intro: bool = True,
     ):
+        """Initialize the MediaWiki retriever with API and chunking settings.
+
+        Args:
+            api_url (str): Base URL of the MediaWiki API endpoint.
+            top_k (int): Number of search hits to fetch per query.
+            timeout (int): Request timeout in seconds for API calls.
+            max_section_chars (int): Maximum characters per returned section.
+            include_intro (bool): Whether to include pre-heading intro text.
+        """
         self.api_url = api_url.rstrip("/")
         self.top_k = top_k
         self.timeout = timeout
@@ -83,6 +97,14 @@ class MardiWikiRetriever:
     # --------------------------------------------------
 
     def get_relevant_documents(self, query: str) -> List[Document]:
+        """Retrieve and chunk MaRDI Portal pages relevant to a query.
+
+        Args:
+            query (str): User question to search for.
+
+        Returns:
+            List[Document]: Section-level documents with MaRDI metadata attached.
+        """
         start = time.monotonic()
         deadline = start + HARD_TIMEOUT_SECONDS
 
@@ -209,6 +231,14 @@ class MardiWikiRetriever:
 
 
     def _fetch_parsed_html(self, pageid: int) -> str:
+        """Fetch rendered HTML for a wiki page using action=parse.
+
+        Args:
+            pageid (int): MediaWiki page identifier.
+
+        Returns:
+            str: Rendered HTML content for the page.
+        """
         params = {
             "action": "parse",
             "pageid": pageid,
@@ -221,6 +251,7 @@ class MardiWikiRetriever:
 
 
     def _build_page_url(self, title: str) -> str:
+        """Generate a public portal URL for a wiki page title."""
         # Works for MaRDI portal; keep simple and stable
         return f"https://portal.mardi4nfdi.de/wiki/{title.replace(' ', '_')}"
 
@@ -312,6 +343,7 @@ class MardiWikiRetriever:
     # --------------------------------------------------
 
     def _cleanup_soup(self, soup: BeautifulSoup) -> None:
+        """Remove noisy elements and flatten tables for readable text."""
         # Remove irrelevant elements
         for tag in soup(["style", "script"]):
             tag.decompose()
@@ -336,7 +368,7 @@ class MardiWikiRetriever:
             table.replace_with("\n".join(rows))
 
     def _nodes_to_text(self, nodes) -> str:
-        # Convert a list of soup nodes into cleaned text
+        """Convert a list of soup nodes into cleaned, line-separated text."""
         tmp = BeautifulSoup("", "html.parser")
         container = tmp.new_tag("div")
         tmp.append(container)
@@ -353,6 +385,7 @@ class MardiWikiRetriever:
         return "\n".join(lines)
 
     def _extract_text(self, html: str) -> str:
+        """Extract readable plaintext from raw HTML after cleanup."""
         soup = BeautifulSoup(html, "html.parser")
         self._cleanup_soup(soup)
         text = soup.get_text(separator="\n", strip=True)
@@ -361,11 +394,13 @@ class MardiWikiRetriever:
 
     @staticmethod
     def _slug(s: str) -> str:
+        """Create a URL-friendly slug from a section title."""
         s = (s or "").strip().lower()
         s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
         return s or "section"
 
     def _is_lexical_query(self, query: str) -> bool:
+        """Return True for short/identifier-like queries that suit lexical search."""
         q = query.strip()
         return (
             len(q) <= 30
