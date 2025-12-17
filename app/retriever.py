@@ -8,6 +8,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException
 from flashrank import RerankRequest
 
 from app.logger import get_logger
+from app.mardi_wiki_retriever import MardiWikiRetriever
 
 logger = get_logger("retriever")
 
@@ -53,43 +54,33 @@ def rerank_docs(
         doc = docs[int(r["id"])]
         doc.metadata = dict(doc.metadata or {})
 
-        # --------------------------------------------------
-        # Sparse bias (small, controlled)
-        # --------------------------------------------------
         bias = doc.metadata.get("rerank_bias", 0.0)
         doc.metadata["rerank_score"] = r["score"] + bias
 
         ranked_docs.append(doc)
 
-    # --------------------------------------------------
-    # BEFORE: candidate composition
-    # --------------------------------------------------
     before_counts = Counter(
         d.metadata.get("retriever", "unknown") for d in docs
     )
     logger.info(
-        "Before rerank: %d candidates | dense=%d sparse=%d",
+        "Before rerank: %d candidates | dense=%d sparse=%d mediawiki=%d",
         len(docs),
         before_counts.get("dense", 0),
         before_counts.get("sparse", 0),
+        before_counts.get("mediawiki", 0),
     )
 
-    # --------------------------------------------------
-    # AFTER: final composition
-    # --------------------------------------------------
     after_counts = Counter(
         d.metadata.get("retriever", "unknown") for d in ranked_docs
     )
     logger.info(
-        "After rerank: top-%d | dense=%d sparse=%d",
+        "After rerank: top-%d | dense=%d sparse=%d mediawiki=%d",
         top_k,
         after_counts.get("dense", 0),
         after_counts.get("sparse", 0),
+        after_counts.get("mediawiki", 0),
     )
 
-    # --------------------------------------------------
-    # Detailed per-document trace (DEBUG)
-    # --------------------------------------------------
     for i, doc in enumerate(ranked_docs, start=1):
         meta = doc.metadata or {}
         logger.debug(
@@ -159,10 +150,15 @@ def create_retriever(
     limit: int = 5,
     candidate_multiplier: int = 4,
     reranker: Optional[object] = None,
+    mardi_wiki: Optional[MardiWikiRetriever] = None,
 ):
-    """Create a hybrid retriever using dense + sparse Qdrant search."""
+    """Create a hybrid retriever using dense + sparse + MaRDI Wiki search."""
 
-    logger.info(f"[create_retriever] limit={limit}; candidate_multiplier={candidate_multiplier} ")
+    logger.info(
+        "[create_retriever] limit=%d; candidate_multiplier=%d",
+        limit,
+        candidate_multiplier,
+    )
 
     def custom_retrieve(query: str) -> List[Document]:
         query_embedding = embeddings.embed_query(query)
@@ -209,7 +205,7 @@ def create_retriever(
             )
 
         # --------------------------------------------------
-        # Sparse retrieval (query-dependent routing)
+        # Sparse retrieval
         # --------------------------------------------------
         sparse_limit = limit * candidate_multiplier
         if is_lexical_query(query):
@@ -226,10 +222,23 @@ def create_retriever(
             limit=sparse_limit,
         )
 
+        # --------------------------------------------------
+        # MaRDI Wiki retrieval
+        # --------------------------------------------------
+        wiki_docs: List[Document] = []
+        if mardi_wiki is not None:
+            try:
+                logger.info("Starting MaRDI Wiki retrieval ...")
+                wiki_docs = mardi_wiki.get_relevant_documents(query)
+                logger.info("Done with MaRDI Wiki retrieval.")
+            except Exception as exc:
+                logger.warning("MaRDI Wiki retrieval failed: %s", exc)
+
         logger.info(
-            "Retrieved candidates | dense=%d sparse=%d",
+            "Retrieved candidates | dense=%d sparse=%d mediawiki=%d",
             len(dense_docs),
             len(sparse_docs),
+            len(wiki_docs),
         )
 
         # --------------------------------------------------
@@ -246,7 +255,7 @@ def create_retriever(
                 f"{m.get('chunk_index','?')}"
             )
 
-        for doc in dense_docs + sparse_docs:
+        for doc in dense_docs + sparse_docs + wiki_docs:
             key = doc_key(doc)
             if key not in seen:
                 seen.add(key)
@@ -255,11 +264,16 @@ def create_retriever(
         logger.info("Merged candidates after deduplication: %d", len(merged))
 
         # --------------------------------------------------
-        # Sparse bias before reranking
+        # Bias before reranking
         # --------------------------------------------------
         for doc in merged:
             meta = doc.metadata or {}
-            meta["rerank_bias"] = 0.1 if meta.get("retriever") == "sparse" else 0.0
+            if meta.get("retriever") == "sparse":
+                meta["rerank_bias"] = 0.1
+            elif meta.get("retriever") == "mediawiki":
+                meta["rerank_bias"] = 0.07
+            else:
+                meta["rerank_bias"] = 0.0
 
         # --------------------------------------------------
         # Optional FlashRank reranking
@@ -286,7 +300,11 @@ def create_retriever(
 
 def format_docs(docs: List[Document], context_limit: int) -> str:
     """Join the top documents into a context string for the LLM with provenance."""
-    logger.info("[format_docs] Formatting %d docs for LLM context (context_limit: %d)", len(docs), context_limit)
+    logger.info(
+        "[format_docs] Formatting %d docs for LLM context (context_limit: %d)",
+        len(docs),
+        context_limit,
+    )
     formatted = []
 
     for doc in docs[:context_limit]:

@@ -19,5 +19,8 @@ ollama>=0.4.0
 pyyaml>=6.0.2
 python-dotenv>=1.0.1
 
+# HTML processing
+beautifulsoup4
+
 # Testing
 pytest>=8.0.0

@@ -8,48 +8,60 @@ from app.logger import get_logger
 from app.config import load_config
 from app.retriever import create_retriever, format_docs
 from app.embedder_tools import EmbedderTools
+from app.mardi_wiki_retriever import MardiWikiRetriever
 
 
 logger = get_logger("rag_chain")
 
 
 @st.cache_resource
-def build_cached_chain(qdrant_url, qdrant_api_key, collection,
-                       retrieve_limit, context_limit, candidate_multiplier, embed_model,
-                       llm_host, llm_model, ollama_api_key, llm_context_size=None, _reranker=None):
-    """Build and cache the retrieval chain and LLM client to avoid per-prompt rebuilds.
+def build_cached_chain(
+    qdrant_url,
+    qdrant_api_key,
+    collection,
+    retrieve_limit,
+    context_limit,
+    candidate_multiplier,
+    embed_model,
+    llm_host,
+    llm_model,
+    ollama_api_key,
+    llm_context_size=None,
+    _reranker=None,
+):
+    """Build and cache the retrieval chain and LLM client to avoid per-prompt rebuilds."""
 
-    Args:
-        qdrant_url: Qdrant endpoint URL.
-        qdrant_api_key: Optional Qdrant API key.
-        collection: Target collection name.
-        retrieve_limit: Max number of documents to pull from Qdrant.
-        context_limit: Max number of docs to include in the LLM context.
-        candidate_multiplier: How many more docs to fetch before reranking.
-        embed_model: Embedding model name.
-        llm_host: Ollama host URL.
-        llm_model: LLM model name.
-        ollama_api_key: Optional LLM API key.
-        llm_context_size: Optional maximum context window for the LLM (tokens).
-        _reranker: Optional reranker instance (e.g., FlashRank Ranker).
-
-    Returns:
-        Tuple[Runnable, ChatOllama]: Chain plus LLM client for streaming.
-    """
     t_start = time.time()
 
+    # --------------------------------------------------
+    # Qdrant client
+    # --------------------------------------------------
     client = QdrantClient(
         url=qdrant_url,
         api_key=qdrant_api_key,
     )
     logger.info("Initialized Qdrant client (cached)")
 
+    # --------------------------------------------------
+    # Embeddings
+    # --------------------------------------------------
     t_embed = time.time()
     embedder = EmbedderTools(model_name=embed_model)
     embeddings = embedder.embeddings
     logger.info("Loaded embeddings in %.2fs (cached)", time.time() - t_embed)
 
-    # Build retriever with optional FlashRank reranker
+    # --------------------------------------------------
+    # MaRDI Wiki retriever (cached)
+    # --------------------------------------------------
+    mardi_wiki = MardiWikiRetriever(
+        api_url="https://portal.mardi4nfdi.de/w/api.php",
+        top_k=retrieve_limit,
+    )
+    logger.info("Initialized MaRDI Wiki retriever (cached)")
+
+    # --------------------------------------------------
+    # Hybrid retriever
+    # --------------------------------------------------
     retriever_fn = create_retriever(
         client=client,
         embeddings=embeddings,
@@ -57,30 +69,26 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
         limit=retrieve_limit,
         candidate_multiplier=candidate_multiplier,
         reranker=_reranker,
+        mardi_wiki=mardi_wiki,
     )
 
-    def timed_retriever(query):
-        """Wrap the retriever to log latency.
-
-        Args:
-            query: User query string.
-
-        Returns:
-            list: Retrieved documents.
-        """
+    def timed_retriever(query: str):
+        """Wrap the retriever to log latency."""
         t0 = time.time()
-
         try:
             docs = retriever_fn(query)
         except Exception:
             logger.exception("Retriever failed")
             raise
 
-        logger.info(f"Retrieval: {time.time() - t0:.2f}s")
+        logger.info("Retrieval: %.2fs", time.time() - t0)
         return docs
 
     retriever = RunnableLambda(timed_retriever)
 
+    # --------------------------------------------------
+    # LLM client
+    # --------------------------------------------------
     llm = ChatOllama(
         base_url=llm_host,
         model=llm_model,
@@ -95,15 +103,10 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
     )
     logger.info("LLM client ready (model=%s)", llm_model)
 
+    # --------------------------------------------------
+    # Chain assembly
+    # --------------------------------------------------
     def assemble(x):
-        """Package docs and formatted context for downstream consumption.
-
-        Args:
-            x: Mapping containing docs.
-
-        Returns:
-            dict: Payload with raw docs and formatted context string.
-        """
         docs = x["docs"]
         return {
             "docs": docs,
@@ -123,21 +126,11 @@ def build_cached_chain(qdrant_url, qdrant_api_key, collection,
 
 
 def build_rag_chain(
-        collection_override: str | None = None,
-        reranker=None,
+    collection_override: str | None = None,
+    reranker=None,
 ):
-    """Build the retrieval chain and LLM client.
+    """Build the retrieval chain and LLM client."""
 
-    Args:
-        collection_override (str | None): Optional collection name supplied externally
-            (e.g., via URL query params). When not provided, the collection from
-            ``config.yaml`` is used.
-        reranker: Optional reranker instance (e.g., FlashRank Ranker). When provided,
-            retrieved documents are reranked before being passed to the LLM.
-
-    Returns:
-        Tuple[Runnable, ChatOllama]: Chain that fetches docs and context, plus the LLM client for streaming.
-    """
     t_start = time.time()
     cfg = load_config()
     logger.info("Config loaded in %.2fs", time.time() - t_start)
