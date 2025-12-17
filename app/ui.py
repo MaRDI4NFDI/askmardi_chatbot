@@ -3,7 +3,8 @@ import signal
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from queue import SimpleQueue
+from queue import Empty, SimpleQueue
+import threading
 
 import streamlit as st
 
@@ -345,22 +346,37 @@ if is_new_prompt:
     with st.status("Retrieving context… 🔍", expanded=True) as status:
         t_retrieve = time.time()
 
-        try:
-            rec = chain.invoke(
-                {
-                    "question": user_message,
-                    "progress_cb": progress,
-                }
-            )
-        except Exception as e:
-            status.update(label="Retrieving context failed", state="error")
-            logger.exception("Could not connect to qdrant server: %s", e)
-            st.error("Could not connect to qdrant server:: %s" % e)
-            st.stop()
+        rec_holder: dict[str, object] = {"rec": None, "exc": None}
 
-        # Drain and render progress events on the UI thread
-        while not progress_events.empty():
-            status.write(progress_events.get())
+        def retrieve():
+            try:
+                rec_holder["rec"] = chain.invoke(
+                    {
+                        "question": user_message,
+                        "progress_cb": progress,
+                    }
+                )
+            except Exception as e:  # pragma: no cover - streamed error path
+                rec_holder["exc"] = e
+
+        worker = threading.Thread(target=retrieve, daemon=True)
+        worker.start()
+
+        # Poll the queue and stream updates on the main thread to avoid NoSessionContext
+        while worker.is_alive() or not progress_events.empty():
+            try:
+                msg = progress_events.get_nowait()
+                status.write(msg)
+            except Empty:
+                time.sleep(0.05)
+
+        worker.join()
+        if rec_holder["exc"]:
+            status.update(label="Retrieving context failed", state="error")
+            logger.exception("Could not connect to qdrant server: %s", rec_holder["exc"])
+            st.error("Could not connect to qdrant server:: %s" % rec_holder["exc"])
+            st.stop()
+        rec = rec_holder["rec"]
 
         status.update(label="Retrieving context… 🔍", state="complete")
 

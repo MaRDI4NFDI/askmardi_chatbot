@@ -163,7 +163,7 @@ def create_retriever(
     def custom_retrieve(query: str, progress_cb=None) -> List[Document]:
 
         if progress_cb:
-            progress_cb("Embedding query")
+            progress_cb("Searching knowledge-base ...")
 
         query_embedding = embeddings.embed_query(query)
         dense_res = None
@@ -172,9 +172,6 @@ def create_retriever(
         # --------------------------------------------------
         # Dense retrieval
         # --------------------------------------------------
-        if progress_cb:
-            progress_cb("Dense vector search...")
-
         for attempt in range(1, 6):
             try:
                 dense_res = client.query_points(
@@ -214,9 +211,6 @@ def create_retriever(
         # --------------------------------------------------
         # Sparse retrieval
         # --------------------------------------------------
-        if progress_cb:
-            progress_cb("Sparse keyword search ...")
-
         sparse_limit = limit * candidate_multiplier
         if is_lexical_query(query):
             sparse_limit *= 2
@@ -238,7 +232,7 @@ def create_retriever(
         wiki_docs: List[Document] = []
         if mardi_wiki is not None:
             if progress_cb:
-                progress_cb("MaRDI Wiki search (Portal)")
+                progress_cb("Searching MaRDI Wiki and KG (portal) ...")
 
             try:
                 logger.info("Starting MaRDI Wiki retrieval ...")
@@ -246,6 +240,8 @@ def create_retriever(
                 logger.info("Done with MaRDI Wiki retrieval.")
             except Exception as exc:
                 logger.warning("MaRDI Wiki retrieval failed: %s", exc)
+                if progress_cb:
+                    progress_cb("Could not retrieve results from MaRDI portal.")
 
         logger.info(
             "Retrieved candidates | dense=%d sparse=%d mediawiki=%d",
@@ -258,7 +254,7 @@ def create_retriever(
         # Merge & deduplicate
         # --------------------------------------------------
         if progress_cb:
-            progress_cb("Merging & deduplicating candidates")
+            progress_cb("Merging results ...")
 
         seen = set()
         merged: List[Document] = []
@@ -295,9 +291,6 @@ def create_retriever(
         # Optional FlashRank reranking
         # --------------------------------------------------
         if reranker is not None:
-
-            if progress_cb:
-                progress_cb("Reranking ...")
 
             logger.info("Reranking %d merged docs with FlashRank", len(merged))
             merged = rerank_docs(

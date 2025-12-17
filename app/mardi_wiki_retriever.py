@@ -14,13 +14,13 @@ from langchain_core.documents import Document
 import spacy
 from functools import lru_cache
 
-HARD_TIMEOUT_SECONDS = 5.0
+HARD_TIMEOUT_SECONDS: int = 5
 
 MAIN_NAMESPACE = "0"
 
 ENTITY_NAMESPACES = "|".join([
     "0",      # Main / Portal
-    "120",    # Item (QIDs)
+#    "120",    # Item (QIDs)
     "4200",   # Formula
     "4202",   # Person
     "4206",   # Publication
@@ -68,7 +68,7 @@ class MardiWikiRetriever:
         self,
         api_url: str,
         top_k: int = 5,
-        timeout: int = 10,
+        timeout: int = HARD_TIMEOUT_SECONDS,
         max_section_chars: int = 6000,
         include_intro: bool = True,
     ):
