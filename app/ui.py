@@ -550,8 +550,8 @@ if st.session_state.docs:
 
         line = f"**{title}** — pages {page_str}"
 
-        if source:
-            line += f" (source: {source})"
+        #if source:
+        #    line += f" (source: {source})"
 
         # Prefer concrete page URL, fallback to QID
         if info.get("url"):

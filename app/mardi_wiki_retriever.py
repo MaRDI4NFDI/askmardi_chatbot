@@ -158,8 +158,10 @@ class MardiWikiRetriever:
 
         if _is_lexical_query(query):
             srnamespace = ENTITY_NAMESPACES
+            logger.info("[MardiWiki_search] Using all namespaces...")
         else:
             srnamespace = MAIN_NAMESPACE
+            logger.info("[MardiWiki_search] Using ONLY MAIN namespace...")
 
         params = {
             "action": "query",
