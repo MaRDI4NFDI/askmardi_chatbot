@@ -139,48 +139,43 @@ def get_history(n_turns=HISTORY_LENGTH):
 
 
 def group_sources(docs):
-    """Group retrieved chunks by package/version + QID.
-
-    Args:
-        docs: List of LangChain Documents returned from retrieval.
-
-    Returns:
-        dict: Mapping of package/version to chunk indices and optional QID/source/pages.
-    """
     grouped = {}
+
     for doc in docs:
-        meta = doc.metadata
-        main_title = meta.get("title") or "unknown"
-        package = meta.get("package") or "unknown"
-        version = meta.get("version") or "unknown"
+        meta = doc.metadata or {}
 
-        title = (
-            f"{package} ({version})"
-            if package != "unknown" and version != "unknown"
-            else package
-            if package != "unknown"
-            else main_title
-        )
-
-        chunk_idx = meta.get("chunk_index", "unknown")
-        page = meta.get("page", "unknown")
         qid = meta.get("qid")
-        source = meta.get("source")
+        url = meta.get("url")
+        title = meta.get("title") or meta.get("page") or "unknown"
+        package = meta.get("package")
+        version = meta.get("version")
+        source = meta.get("retriever")
 
-        if title not in grouped:
-            grouped[title] = {
+        key = qid or url or f"{package}:{title}"
+
+        if key not in grouped:
+            display_title = (
+                f"{package} ({version})"
+                if package and version
+                else title
+            )
+
+            grouped[key] = {
+                "title": display_title,
                 "chunks": set(),
                 "pages": set(),
                 "qid": qid,
+                "url": url,
                 "source": source,
             }
 
-        grouped[title]["chunks"].add(chunk_idx)
-        grouped[title]["pages"].add(page)
+        grouped[key]["chunks"].add(meta.get("chunk_index", "unknown"))
+        grouped[key]["pages"].add(meta.get("page", "unknown"))
 
-    for k in grouped:
-        grouped[k]["chunks"] = sorted(list(grouped[k]["chunks"]))
-        grouped[k]["pages"] = sorted(list(grouped[k]["pages"]))
+    for v in grouped.values():
+        v["chunks"] = sorted(v["chunks"])
+        v["pages"] = sorted(v["pages"])
+
     return grouped
 
 
@@ -548,17 +543,23 @@ if st.session_state.docs:
 
     grouped = group_sources(st.session_state.docs)
 
-    for title, info in grouped.items():
-        chunk_str = ", ".join(str(p) for p in info["chunks"])
+    for info in grouped.values():
+        title = info["title"]
         page_str = ", ".join(str(p) for p in info["pages"])
-        qid = info.get("qid") or "unknown"
         source = info.get("source")
 
         line = f"**{title}** — pages {page_str}"
+
         if source:
             line += f" (source: {source})"
-        line += (
-            f" · [Open in Portal]"
-            f"(https://portal.mardi4nfdi.de/wiki/Item:{qid})"
-        )
+
+        # Prefer concrete page URL, fallback to QID
+        if info.get("url"):
+            line += f" · [Open in Portal]({info['url']})"
+        elif info.get("qid"):
+            line += (
+                f" · [Open in Portal]"
+                f"(https://portal.mardi4nfdi.de/wiki/Item:{info['qid']})"
+            )
+
         st.write(line)
